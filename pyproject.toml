@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "stable-diffusion-webui"
+version = "0.1.0"
+description = ""
+authors = ["nschechter <noahschechter7@gmail.com>"]
+readme = "README.md"
+packages = [{include = "stable_diffusion_webui"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+transformers = "==4.19.2"
+diffusers = "*"
+invisible-watermark = "*"
+basicsr = "*"
+fairscale = "==0.4.4"
+fonts = "*"
+font-roboto = "*"
+gfpgan = "*"
+gradio = "==3.9"
+numpy = "*"
+omegaconf = "*"
+opencv-python = "*"
+requests = "*"
+piexif = "*"
+pillow = "*"
+pytorch-lightning = "==1.7.7"
+realesrgan = "*"
+scikit-image = ">=0.19"
+timm = "==0.4.12"
+torch = "*"
+einops = "*"
+jsonmerge = "*"
+clean-fid = "*"
+resize-right = "*"
+torchdiffeq = "*"
+kornia = "*"
+lark = "*"
+inflection = "*"
+gitpython = "*"
+fastapi = "*"
+k-diffusion = "*"
+boto3 = "^1.26.12"
+
+
+[tool.poetry.dev-dependencies]
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
