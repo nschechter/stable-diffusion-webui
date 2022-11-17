@@ -2,7 +2,10 @@ import base64
 import io
 import time
 import uvicorn
+import requests
 from threading import Lock
+from io import BytesIO
+from PIL import Image
 from gradio.processing_utils import encode_pil_to_base64, decode_base64_to_file, decode_base64_to_image
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 import modules.shared as shared
@@ -159,7 +162,13 @@ class Api:
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
         reqDict = setUpscalers(req)
 
-        reqDict['image'] = decode_base64_to_image(reqDict['image'])
+        if reqDict['image_url']:
+            response = requests.get(reqDict['image_url'])
+            image = Image.open(BytesIO(response.content))
+            # init_image = init_image.resize((512, 512))
+            reqDict['image'] = image
+        else:
+            reqDict['image'] = decode_base64_to_image(reqDict['image'])
 
         with self.queue_lock:
             result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", **reqDict)
