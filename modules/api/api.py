@@ -3,6 +3,11 @@ import io
 import time
 import uvicorn
 import requests
+import uuid
+import boto3
+import mimetypes
+from urllib.parse import urlparse
+from botocore.exceptions import ClientError
 from threading import Lock
 from io import BytesIO
 from PIL import Image
@@ -117,10 +122,15 @@ class Api:
         if sampler_index is None:
             raise HTTPException(status_code=404, detail="Sampler not found")
 
-
-        init_images = img2imgreq.init_images
-        if init_images is None:
-            raise HTTPException(status_code=404, detail="Init image not found")
+        if img2imgreq.init_images:
+            init_images = img2imgreq.init_images
+        elif img2imgreq.image_url:
+            response = requests.get(img2imgreq.image_url)
+            content_type = response.headers['content-type']
+            extension = mimetypes.guess_extension(content_type)
+            init_images = [Image.open(BytesIO(response.content))]
+        else:
+            raise HTTPException(status_code=404, detail="Image(s) not found")
 
         mask = img2imgreq.mask
         if mask:
@@ -137,12 +147,19 @@ class Api:
         )
         p = StableDiffusionProcessingImg2Img(**vars(populate))
 
-        imgs = []
-        for img in init_images:
-            img = decode_base64_to_image(img)
-            imgs = [img] * p.batch_size
+        if img2imgreq.init_images:
+            imgs = []
+            for img in init_images:
+                img = decode_base64_to_image(img)
+                imgs = [img] * p.batch_size
 
-        p.init_images = imgs
+            p.init_images = imgs
+        elif img2imgreq.image_url:
+            images = init_images * p.batch_size
+
+            p.init_images = images
+
+
 
         shared.state.begin()
 
@@ -151,19 +168,29 @@ class Api:
 
         shared.state.end()
 
-        b64images = list(map(encode_pil_to_base64, processed.images))
-
         if (not img2imgreq.include_init_images):
             img2imgreq.init_images = None
             img2imgreq.mask = None
 
-        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
+        if img2imgreq.image_url:
+            s3_client = boto3.client('s3')
+            upload_file_stream = io.BytesIO()
+            processed.images[0].save(upload_file_stream, format=extension[1:].upper())
+            upload_file_stream.seek(0)
+            key = str(uuid.uuid4()) + extension
+            response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type)
+            return ImageToImageResponse(images=[key], parameters=vars(img2imgreq), info=processed.js())
+        else:
+            b64images = list(map(encode_pil_to_base64, processed.images))
+            return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
         reqDict = setUpscalers(req)
 
         if reqDict['image_url']:
             response = requests.get(reqDict['image_url'])
+            content_type = response.headers['content-type']
+            extension = mimetypes.guess_extension(content_type)
             image = Image.open(BytesIO(response.content))
             # init_image = init_image.resize((512, 512))
             reqDict['image'] = image
@@ -173,7 +200,14 @@ class Api:
         with self.queue_lock:
             result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", **reqDict)
 
-        return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
+        s3_client = boto3.client('s3')
+        upload_file_stream = io.BytesIO()
+        result[0][0].save(upload_file_stream, format=extension[1:].upper())
+        upload_file_stream.seek(0)
+        key = str(uuid.uuid4()) + extension
+        response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type)
+
+        return ExtrasSingleImageResponse(image=key, html_info=result[1])
 
     def extras_batch_images_api(self, req: ExtrasBatchImagesRequest):
         reqDict = setUpscalers(req)
