@@ -32,6 +32,12 @@ def upscaler_to_index(name: str):
     except:
         raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be on of these: {' , '.join([x.name for x in sd_upscalers])}")
 
+def parse_pil_image_extension(extension):
+    if (extension == "jpg"):
+        return "JPEG"
+    else:
+        return extension.upper()
+
 
 sampler_to_index = lambda name: next(filter(lambda row: name.lower() == row[1].name.lower(), enumerate(all_samplers)), None)
 
@@ -128,6 +134,7 @@ class Api:
             response = requests.get(img2imgreq.image_url)
             content_type = response.headers['content-type']
             extension = mimetypes.guess_extension(content_type)
+            parsed_extension = parse_pil_image_extension(extension[1:])
             init_images = [Image.open(BytesIO(response.content))]
         else:
             raise HTTPException(status_code=404, detail="Image(s) not found")
@@ -175,10 +182,10 @@ class Api:
         if img2imgreq.image_url:
             s3_client = boto3.client('s3')
             upload_file_stream = io.BytesIO()
-            processed.images[0].save(upload_file_stream, format=extension[1:].upper())
+            processed.images[0].save(upload_file_stream, format=parsed_extension)
             upload_file_stream.seek(0)
             key = str(uuid.uuid4()) + extension
-            response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type)
+            response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type, ACL="public-read")
             return ImageToImageResponse(images=[key], parameters=vars(img2imgreq), info=processed.js())
         else:
             b64images = list(map(encode_pil_to_base64, processed.images))
@@ -191,6 +198,7 @@ class Api:
             response = requests.get(reqDict['image_url'])
             content_type = response.headers['content-type']
             extension = mimetypes.guess_extension(content_type)
+            parsed_extension = parse_pil_image_extension(extension[1:])
             image = Image.open(BytesIO(response.content))
             # init_image = init_image.resize((512, 512))
             reqDict['image'] = image
@@ -202,10 +210,10 @@ class Api:
 
         s3_client = boto3.client('s3')
         upload_file_stream = io.BytesIO()
-        result[0][0].save(upload_file_stream, format=extension[1:].upper())
+        result[0][0].save(upload_file_stream, format=parsed_extension)
         upload_file_stream.seek(0)
         key = str(uuid.uuid4()) + extension
-        response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type)
+        response = s3_client.put_object(Body=upload_file_stream, Bucket="generated-photos-dump", Key=key, ContentType=content_type, ACL="public-read")
 
         return ExtrasSingleImageResponse(image=key, html_info=result[1])
 
