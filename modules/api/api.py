@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from botocore.exceptions import ClientError
 from threading import Lock
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageOps
 from gradio.processing_utils import encode_pil_to_base64, decode_base64_to_file, decode_base64_to_image
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 import modules.shared as shared
@@ -128,7 +128,9 @@ class Api:
             s3_client = boto3.client('s3')
             response = s3_client.get_object(Bucket="generated-photos-dump", Key=img2imgreq.image_key)
             content_type = response['ResponseMetadata']['HTTPHeaders']['content-type']
-            init_images = [Image.open(response['Body'])]
+            image = Image.open(response['Body'])
+            image = ImageOps.exif_transpose(image)
+            init_images = [image]
         else:
             raise HTTPException(status_code=404, detail="Image(s) not found")
 
@@ -192,6 +194,7 @@ class Api:
             response = s3_client.get_object(Bucket="generated-photos-dump", Key=reqDict['image_key'])
             content_type = response['ResponseMetadata']['HTTPHeaders']['content-type']
             image = Image.open(response['Body'])
+            image = ImageOps.exif_transpose(image)
             image = image.resize((512, 512))
             reqDict['image'] = image
         else:
